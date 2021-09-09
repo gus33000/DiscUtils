@@ -70,7 +70,7 @@ namespace DiscUtils.Fat
         private string _bsVolLab;
         private Stream _data;
         private Directory _rootDir;
-        
+
         static FatFileSystem()
         {
             EncodingHelper.RegisterEncodings();
@@ -1464,10 +1464,6 @@ namespace DiscUtils.Fat
         private static FatType DetectFATType(byte[] bpb)
         {
             uint bpbBytesPerSec = EndianUtilities.ToUInt16LittleEndian(bpb, 11);
-            if (bpbBytesPerSec == 0)
-            {
-                throw new InvalidFileSystemException("Bytes per sector is 0, invalid or corrupt filesystem.");
-            }
             uint bpbRootEntCnt = EndianUtilities.ToUInt16LittleEndian(bpb, 17);
             uint bpbFATSz16 = EndianUtilities.ToUInt16LittleEndian(bpb, 22);
             uint bpbFATSz32 = EndianUtilities.ToUInt32LittleEndian(bpb, 36);
@@ -1607,6 +1603,10 @@ namespace DiscUtils.Fat
                 parent = null;
                 return 0;
             }
+            // Long filename support - translate long filename lookup to short filename
+            if (dir.LongFileNames_LongKey.TryGetValue(pathEntries[pathOffset], out string ShortName))
+                pathEntries[pathOffset] = ShortName;
+
             entryId = dir.FindEntry(new FileName(pathEntries[pathOffset], FatOptions.FileNameEncoding));
             if (entryId >= 0)
             {
@@ -1706,7 +1706,57 @@ namespace DiscUtils.Fat
 
         private delegate void EntryUpdateAction(DirectoryEntry entry);
 
-#region Disk Formatting
+        /// <summary>
+        /// Gets the long name of a given file.
+        /// </summary>
+        /// <param name="shortFullPath">The short full path to the file. Input path segments must be short names.</param>
+        /// <returns>The corresponding long file name.</returns>
+        public string GetLongFileName(string shortFullPath)
+        {
+            if (shortFullPath == null)
+                throw new ArgumentNullException("shortFullPath");
+
+            string dirPath = Path.GetDirectoryName(shortFullPath);
+            string fileName = Path.GetFileName(shortFullPath);
+            Directory dir = GetDirectory(dirPath);
+            if (dir == null)
+                return fileName;
+
+            if (dir.LongFileNames_ShortKey.TryGetValue(Path.GetFileName(shortFullPath), out string lfn))
+                return lfn;
+
+            return fileName;
+        }
+
+        /// <summary>
+        /// Gets the long path to a given file.
+        /// </summary>
+        /// <param name="shortFullPath">The short full path to the file. Input path segments must be short names.</param>
+        /// <returns>The corresponding long file path to the file or null if not found.</returns>
+        public string GetLongFilePath(string shortFullPath)
+        {
+            if (shortFullPath == null)
+                throw new ArgumentNullException("shortFullPath");
+
+            string path = null;
+            string current = null;
+            foreach (string segment in shortFullPath.Split(Path.DirectorySeparatorChar))
+            {
+                if (current == null)
+                {
+                    current = segment;
+                    path = GetLongFileName(current);
+                }
+                else
+                {
+                    current = Path.Combine(current, segment);
+                    path = Path.Combine(path, GetLongFileName(current));
+                }
+            }
+            return path;
+        }
+
+        #region Disk Formatting
 
         /// <summary>
         /// Creates a formatted floppy disk image in a stream.
@@ -1947,6 +1997,6 @@ namespace DiscUtils.Fat
             return new FatFileSystem(stream);
         }
 
-#endregion
+        #endregion
     }
 }
