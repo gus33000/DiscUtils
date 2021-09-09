@@ -28,7 +28,7 @@ using System.Text.RegularExpressions;
 
 namespace DiscUtils.Internal
 {
-    internal static class Utilities
+    public static class Utilities
     {
         /// <summary>
         /// Converts between two arrays.
@@ -430,6 +430,11 @@ namespace DiscUtils.Internal
         /// </remarks>
         public static Regex ConvertWildcardsToRegEx(string pattern)
         {
+            if (pattern == null)
+            {
+                return new Regex(".*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            }
+
             if (!pattern.Contains("."))
             {
                 pattern += ".";
